@@ -290,7 +290,7 @@ class VERTrainer(PPOTrainer):
         self.actor_critic.share_memory()
 
         if self._is_distributed:
-            self.agent.init_distributed(find_unused_params=True)
+            self.agent.init_distributed(find_unused_params=False)
 
         logger.info(
             "agent number of parameters: {}".format(
