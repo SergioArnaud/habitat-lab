@@ -1025,6 +1025,7 @@ class RearrangeReward(UsesRobotInterface, Measure):
             [
                 RobotForce.cls_uuid,
                 ForceTerminate.cls_uuid,
+                IsHoldingSensor.cls_uuid
             ],
         )
 
@@ -1041,9 +1042,12 @@ class RearrangeReward(UsesRobotInterface, Measure):
 
         reward += self._get_coll_reward()
 
+        is_holding = int(self._sim.get_robot_data(self.robot_id).grasp_mgr.is_grasped)
+        is_holding = bool(is_holding)
+
         if self._sim.get_robot_data(
             self.robot_id
-        ).grasp_mgr.is_violating_hold_constraint():
+        ).grasp_mgr.is_violating_hold_constraint() and not is_holding:
             reward -= self._config.constraint_violate_pen
 
         force_terminate = task.measurements.measures[

@@ -18,6 +18,7 @@ from habitat.tasks.rearrange.rearrange_sensors import (
     EndEffectorToObjectDistance,
     ObjectToGoalDistance,
     RearrangeReward,
+    EndEffectorToRestDistance,
     BaseToObjectDistance,
     BaseToGoalDistance
 )
@@ -55,6 +56,179 @@ class GlobalPredicatesSensor(Sensor):
         truth_values = [p.is_true(sim_info) for p in self.predicates_list]
         return np.array(truth_values, dtype=np.float32)
 
+@registry.register_measure
+class MoveObjectsRewardEnhanced(RearrangeReward):
+    """
+    A reward based on L2 distances to object/goal.
+    """
+
+    cls_uuid: str = "move_obj_reward_enhanced"
+
+    @staticmethod
+    def _get_uuid(*args, **kwargs):
+        return MoveObjectsRewardEnhanced.cls_uuid
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def reset_metric(self, *args, episode, task, observations, **kwargs):
+        task.measurements.check_measure_dependencies(
+            self.uuid,
+            [
+                ObjectToGoalDistance.cls_uuid,
+                EndEffectorToObjectDistance.cls_uuid,
+                BaseToObjectDistance.cls_uuid,
+                BaseToGoalDistance.cls_uuid,
+                EndEffectorToRestDistance.cls_uuid
+            ],
+        )
+
+        self._gave_pick_reward = {}
+        self._prev_holding_obj = False
+        self.num_targets = len(self._sim.get_targets()[0])
+
+        self.successfull_drop = True
+        self.steps_since_drop = 0
+        self._cur_rearrange_stage = 0
+        self.pickup_counter = 0
+        self.update_target_object()
+
+        self._prev_obj_to_goal_dist = self.get_distance(task, ObjectToGoalDistance)
+        self._prev_ee_to_obj_dist = self.get_distance(task, EndEffectorToObjectDistance)
+        self._prev_base_to_obj_dist = self.get_distance(task, BaseToObjectDistance)
+        self._prev_base_to_goal_dist = self.get_distance(task, BaseToGoalDistance)
+        self._prev_ee_to_rest_dist = self.get_distance(task, EndEffectorToRestDistance, False)
+
+        self.update_metric(
+            *args,
+            episode=episode,
+            task=task,
+            observations=observations,
+            **kwargs,
+        )
+
+    def update_target_object(self):
+        """
+            The agent just finished one rearrangement stage so it's time to 
+            update the target object for the next stage.
+        """
+        # Get the next target object
+        idxs, _ = self._sim.get_targets()
+        targ_obj_idx = idxs[self._cur_rearrange_stage]
+
+        # Get the target object's absolute index
+        self.abs_targ_obj_idx = self._sim.scene_obj_ids[targ_obj_idx]
+        self.targ_obj_idx = str(targ_obj_idx)
+
+    def get_distance(self, task, distance, has_target=True):
+        if has_target:
+            return task.measurements.measures[distance.cls_uuid].get_metric()[
+                self.targ_obj_idx
+            ]
+        else:
+            return task.measurements.measures[distance.cls_uuid].get_metric()
+
+    def update_metric(self, *args, episode, task, observations, **kwargs):
+        super().update_metric(
+            *args,
+            episode=episode,
+            task=task,
+            observations=observations,
+            **kwargs,
+        )
+        # If all the objects are in the right place but we haven't succeded in the task 
+        # (for example the agent hasn't called terminate) we give zero reward
+        
+        if self._cur_rearrange_stage == self.num_targets:
+            self._metric = 0
+            return
+
+        self.update_target_object()
+
+        obj_to_goal_dist = self.get_distance(task, ObjectToGoalDistance)
+        ee_to_obj_dist = self.get_distance(task, EndEffectorToObjectDistance)
+        base_to_obj_dist = self.get_distance(task, BaseToObjectDistance)
+        base_to_goal_dist = self.get_distance(task, BaseToGoalDistance)
+        ee_to_rest_dist = self.get_distance(task, EndEffectorToRestDistance, False)
+
+        is_holding_obj = self._sim.grasp_mgr.snap_idx == self.abs_targ_obj_idx
+        picked_up_obj = is_holding_obj and not self._prev_holding_obj
+        cur_picked = self._sim.grasp_mgr.is_grasped is not None        
+        dropped_obj = not is_holding_obj and self._prev_holding_obj
+
+        #if dropped_obj:
+        #    self.successfull_drop = False
+
+        # DISTANCE REWARD: Steers the agent towards the object and then towards the goal
+        if is_holding_obj:
+            is_within_grasping_radious = base_to_goal_dist < self._config.grasping_radious
+            if is_within_grasping_radious:
+                dist_diff = self._prev_obj_to_goal_dist - obj_to_goal_dist
+            else:
+                dist_diff = self._prev_base_to_goal_dist - base_to_goal_dist
+        else:
+            is_within_grasping_radious = base_to_obj_dist < self._config.grasping_radious
+            if is_within_grasping_radious:
+                dist_diff = self._prev_ee_to_obj_dist - ee_to_obj_dist
+            else:
+                dist_diff = self._prev_base_to_obj_dist - base_to_obj_dist
+        
+        # If it's not within grasping radious, we want the agent 
+        # to take it's arm towards rest position
+        if not is_within_grasping_radious: 
+            ee_to_rest_diff = self._prev_ee_to_rest_dist - ee_to_rest_dist
+            self._metric += ((self._config.dist_reward * .75) * ee_to_rest_diff)
+
+        dist_diff = round(dist_diff, 3)
+        self._metric += self._config.dist_reward * dist_diff
+
+        # PICK REWARD: Reward for picking up the object, only given once to avoid
+        # reward hacking.
+        already_gave_reward = self._cur_rearrange_stage in self._gave_pick_reward
+        if (picked_up_obj and not already_gave_reward):
+            self.pickup_counter = 20
+            self._metric += self._config.pick_reward
+            self._gave_pick_reward[self._cur_rearrange_stage] = True
+
+        # PLACE REWARD: Reward for placing the object correcly (within success dist)
+        # We also update the target object for the next stage.
+        #place_success = obj_to_goal_dist < self._config.success_dist
+        #if (place_success and not is_holding_obj):
+        #    self._metric += self._config.single_rearrange_reward
+        #    self._cur_rearrange_stage += 1
+
+        #    if self._cur_rearrange_stage < self.num_targets:
+        #        self.update_target_object()
+
+        #    self.successfull_drop = True
+        #    self.steps_since_drop = 0
+
+        if self.pickup_counter > 0 and is_holding_obj:
+            self.pickup_counter -= 1
+            self._metric += .25
+
+        # DROP PENALIZATION: Penalize the agent for dropping the object erroneously
+        # TODO: Modify this to let the agent pick it up again
+        if dropped_obj:
+            self._metric -= self._config.drop_pen
+            self._task.should_end = True
+
+        #if not self.successfull_drop:
+        #    self.steps_since_drop += 1
+
+            # Dropped the object and hasn't received the place reward.
+        #   if self.steps_since_drop == 15:
+        #        self._metric -= self._config.drop_pen
+        #        self._task.should_end = True
+
+        # Need to call the get_distance functions again because the target
+        # object may have changed in the previous if statement.
+        self._prev_ee_to_rest_dist = self.get_distance(task, EndEffectorToRestDistance, False)
+        self._prev_obj_to_goal_dist = self.get_distance(task, ObjectToGoalDistance)
+        self._prev_ee_to_obj_dist = self.get_distance(task, EndEffectorToObjectDistance)
+        self._prev_base_to_obj_dist = self.get_distance(task, BaseToObjectDistance)
+        self._prev_base_to_goal_dist = self.get_distance(task, BaseToGoalDistance)
+        self._prev_holding_obj = is_holding_obj
 
 @registry.register_measure
 class MoveObjectsReward(RearrangeReward):
