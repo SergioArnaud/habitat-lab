@@ -451,6 +451,10 @@ class BaseToGoalDistanceMeasurementConfig(MeasurementConfig):
     type: str = "BaseToGoalDistance"
 
 @dataclass
+class BaseToObjectlDistanceMeasurementConfig(MeasurementConfig):
+    type: str = "BaseToObjectDistance"
+
+@dataclass
 class EndEffectorToObjectDistanceMeasurementConfig(MeasurementConfig):
     type: str = "EndEffectorToObjectDistance"
 
@@ -1589,6 +1593,12 @@ cs.store(
     node=BaseToGoalDistanceMeasurementConfig,
 )
 cs.store(
+    package="habitat.task.measurements.base_to_object_distance",
+    group="habitat/task/measurements",
+    name="base_to_object_distance",
+    node=BaseToObjectlDistanceMeasurementConfig,
+)
+cs.store(
     package="habitat.task.measurements.obj_at_goal",
     group="habitat/task/measurements",
     name="obj_at_goal",
@@ -1613,9 +1623,9 @@ cs.store(
     node=MoveObjectsRewardMeasurementConfig,
 )
 cs.store(
-    package="habitat.task.measurements.move_objects_reward_enhanced",
+    package="habitat.task.measurements.move_obj_reward_enhanced",
     group="habitat/task/measurements",
-    name="move_objects_reward_enhanced",
+    name="move_obj_reward_enhanced",
     node=MoveObjectsRewardEnhancedMeasurementConfig,
 )
 cs.store(

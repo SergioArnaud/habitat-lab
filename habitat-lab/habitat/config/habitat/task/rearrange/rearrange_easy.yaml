@@ -12,6 +12,7 @@ defaults:
     - force_terminate
     - robot_colls
     - end_effector_to_object_distance
+    - end_effector_to_rest_distance
     #- does_want_terminate
     - composite_success
     #- bad_called_terminate
@@ -21,6 +22,7 @@ defaults:
     - gfx_replay_measure
     - composite_stage_goals
     - did_pick_object
+    - base_to_object_distance
     - base_to_goal_distance
     - move_obj_reward_enhanced
 
@@ -48,9 +50,13 @@ task_spec: rearrange_easy
 actions:
   arm_action:
     grip_controller: SuctionGraspAction
+    delta_pos_limit: .0075
+  base_velocity:
+    lin_speed: 6.0
+    ang_speed: 6.0
 measurements:
-  move_objects_reward:
-    force_pen: 0.0
+  move_obj_reward_enhanced:
+    force_end_pen: 5.0
   force_terminate:
     max_accum_force: 100_000.0
     max_instant_force: 10_000.0

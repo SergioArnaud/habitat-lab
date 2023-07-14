@@ -10,7 +10,7 @@ goal:
   expr_type: AND
   sub_exprs:
     - at(goal0|0,TARGET_goal0|0)
-    #- not_holding(robot_0)
+    - not_holding(robot_0)
 
 stage_goals:
   stage_0_5:

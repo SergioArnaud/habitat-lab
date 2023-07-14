@@ -193,7 +193,8 @@ class MoveObjectsRewardEnhanced(RearrangeReward):
         # PLACE REWARD: Reward for placing the object correcly (within success dist)
         # We also update the target object for the next stage.
         #place_success = obj_to_goal_dist < self._config.success_dist
-        #if (place_success and not is_holding_obj):
+        #place_success = place_success and not is_holding_obj
+        #if (place_success):
         #    self._metric += self._config.single_rearrange_reward
         #    self._cur_rearrange_stage += 1
 
@@ -208,8 +209,9 @@ class MoveObjectsRewardEnhanced(RearrangeReward):
             self._metric += .25
 
         # DROP PENALIZATION: Penalize the agent for dropping the object erroneously
-        # TODO: Modify this to let the agent pick it up again
-        if dropped_obj:
+        # TODO: Modify this to let the agent pick it up again?
+        obj_in_success_dist = obj_to_goal_dist < self._config.success_dist
+        if dropped_obj and not obj_in_success_dist:
             self._metric -= self._config.drop_pen
             self._task.should_end = True
 
@@ -366,6 +368,7 @@ class CompositeSuccess(Measure):
         super().__init__(**kwargs)
         self._sim = sim
         self._config = config
+        self._config.must_call_stop = False
 
     @staticmethod
     def _get_uuid(*args, **kwargs):
