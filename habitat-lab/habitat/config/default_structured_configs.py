@@ -10,6 +10,10 @@ from typing import Any, Dict, List, Optional
 from hydra.core.config_store import ConfigStore
 from omegaconf import II, MISSING
 
+# __all__ is used for documentation. Only put in this list the configurations
+# that have proper documentation for.
+__all__ = ["DatasetConfig"]
+
 
 @dataclass
 class HabitatBaseConfig:
@@ -40,6 +44,7 @@ class EnvironmentConfig(HabitatBaseConfig):
 @dataclass
 class ActionConfig(HabitatBaseConfig):
     type: str = MISSING
+    agent_index: int = 0
 
 
 @dataclass
@@ -441,6 +446,13 @@ class RobotCollisionsMeasurementConfig(MeasurementConfig):
 class ObjectToGoalDistanceMeasurementConfig(MeasurementConfig):
     type: str = "ObjectToGoalDistance"
 
+@dataclass
+class BaseToGoalDistanceMeasurementConfig(MeasurementConfig):
+    type: str = "BaseToGoalDistance"
+
+@dataclass
+class BaseToObjectlDistanceMeasurementConfig(MeasurementConfig):
+    type: str = "BaseToObjectDistance"
 
 @dataclass
 class EndEffectorToObjectDistanceMeasurementConfig(MeasurementConfig):
@@ -579,6 +591,20 @@ class DidPickObjectMeasurementConfig(MeasurementConfig):
 @dataclass
 class DidViolateHoldConstraintMeasurementConfig(MeasurementConfig):
     type: str = "DidViolateHoldConstraintMeasure"
+
+@dataclass
+class MoveObjectsRewardEnhancedMeasurementConfig(MeasurementConfig):
+    type: str = "MoveObjectsRewardEnhanced"
+    pick_reward: float = 10.0
+    constraint_violate_pen: float = .25
+    drop_pen: float = 5.0
+    single_rearrange_reward: float = 10.0
+    grasping_radious: float = 1.25
+    success_dist: float = 0.15
+    dist_reward: float = 2.5
+    force_pen: float = 0.0001
+    max_force_pen: float = 1.0
+    force_end_pen: float = 2.5
 
 
 @dataclass
@@ -1054,6 +1080,17 @@ class PyrobotConfig(HabitatBaseConfig):
 
 @dataclass
 class DatasetConfig(HabitatBaseConfig):
+    r"""Configuration for the dataset of the task.
+
+    :data type: The key for the dataset class that will be used. Examples of such keys are `PointNav-v1`, `ObjectNav-v1`, `InstanceImageNav-v1` or `RearrangeDataset-v0`. Different datasets have different properties so you should use the dataset that fits your task.
+    :data scenes_dir: The path to the directory containing the scenes that will be used. You should put all your scenes in the same folder (example `data/scene_datasets`) to avoid having to change it.
+    :data data_path: The path to the episode dataset. Episodes need to be compatible with the `type` argument (so they will load properly) and only use scenes that are present in the `scenes_dir`.
+    :data split: `data_path` can have a `split` in the path. For example: "data/datasets/pointnav/habitat-test-scenes/v1/{split}/{split}.json.gz" the value in "{split}" will be replaced by the value of the `split` argument. This allows to easily swap between `train` and `eval` episodes by only changing the split argument.
+
+    A dataset consists of episodes
+    (a start configuration for a task within a scene) and a scene dataset
+    (with all the assets needed to instantiate the task)
+    """
     type: str = "PointNav-v1"
     split: str = "train"
     scenes_dir: str = "data/scene_datasets"
@@ -1532,6 +1569,12 @@ cs.store(
     node=EpisodeInfoMeasurementConfig,
 )
 cs.store(
+    package="habitat.task.measurements.collisions",
+    group="habitat/task/measurements",
+    name="collisions",
+    node=CollisionsMeasurementConfig,
+)
+cs.store(
     package="habitat.task.measurements.robot_colls",
     group="habitat/task/measurements",
     name="robot_colls",
@@ -1542,6 +1585,18 @@ cs.store(
     group="habitat/task/measurements",
     name="object_to_goal_distance",
     node=ObjectToGoalDistanceMeasurementConfig,
+)
+cs.store(
+    package="habitat.task.measurements.base_to_goal_distance",
+    group="habitat/task/measurements",
+    name="base_to_goal_distance",
+    node=BaseToGoalDistanceMeasurementConfig,
+)
+cs.store(
+    package="habitat.task.measurements.base_to_object_distance",
+    group="habitat/task/measurements",
+    name="base_to_object_distance",
+    node=BaseToObjectlDistanceMeasurementConfig,
 )
 cs.store(
     package="habitat.task.measurements.obj_at_goal",
@@ -1566,6 +1621,12 @@ cs.store(
     group="habitat/task/measurements",
     name="move_objects_reward",
     node=MoveObjectsRewardMeasurementConfig,
+)
+cs.store(
+    package="habitat.task.measurements.move_obj_reward_enhanced",
+    group="habitat/task/measurements",
+    name="move_obj_reward_enhanced",
+    node=MoveObjectsRewardEnhancedMeasurementConfig,
 )
 cs.store(
     package="habitat.task.measurements.does_want_terminate",
