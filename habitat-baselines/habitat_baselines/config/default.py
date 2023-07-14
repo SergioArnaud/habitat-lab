@@ -31,6 +31,7 @@ def get_config(
 ) -> DictConfig:
     """
     Returns habitat_baselines config object composed of configs from yaml file (config_path) and overrides.
+
     :param config_path: path to the yaml config file.
     :param overrides: list of config overrides. For example, :py:`overrides=["habitat_baselines.trainer_name=ddppo"]`.
     :param configs_dir: path to the config files root directory (defaults to :ref:`_BASELINES_CFG_DIR`).

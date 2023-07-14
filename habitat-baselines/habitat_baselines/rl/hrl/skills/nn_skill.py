@@ -165,10 +165,6 @@ class NnSkillPolicy(SkillPolicy):
 
         policy = baseline_registry.get_policy(config.name)
 
-        if "order_keys" in config:
-            policy_cfg.defrost()
-            policy_cfg.habitat_baselines.rl.policy.order_keys = config.order_keys
-            policy_cfg.freeze()
         expected_obs_keys = policy_cfg.habitat.gym.obs_keys
         filtered_obs_space = spaces.Dict(
             {k: observation_space.spaces[k] for k in expected_obs_keys}

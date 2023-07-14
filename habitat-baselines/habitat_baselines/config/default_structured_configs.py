@@ -234,8 +234,6 @@ class HierarchicalPolicy(HabitatBaselinesBaseConfig):
 class PolicyConfig(HabitatBaselinesBaseConfig):
     name: str = "PointNavResNetPolicy"
     action_distribution_type: str = "categorical"  # or 'gaussian'
-    order_keys = False
-    use_mae = False
     # If the list is empty, all keys will be included.
     # For gaussian action distribution:
     action_dist: ActionDistributionConfig = ActionDistributionConfig()
