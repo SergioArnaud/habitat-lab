@@ -14,10 +14,40 @@ from collections import defaultdict
 from typing import Dict, Optional
 
 from tqdm import tqdm
+import numpy as np
 
 from habitat.config.default import get_config
 from habitat.core.agent import Agent
 from habitat.core.env import Env
+
+
+METRICS_BLACKLIST = {"top_down_map", "collisions.is_collision"}
+
+def _extract_scalars_from_info(
+    info
+):
+    result = {}
+    for k, v in info.items():
+        if not isinstance(k, str) or k in METRICS_BLACKLIST:
+            continue
+
+        if isinstance(v, dict):
+            result.update(
+                {
+                    k + "." + subk: subv
+                    for subk, subv in _extract_scalars_from_info(
+                        v
+                    ).items()
+                    if isinstance(subk, str)
+                    and k + "." + subk not in METRICS_BLACKLIST
+                }
+            )
+        # Things that are scalar-like will have an np.size of 1.
+        # Strings also have an np.size of 1, so explicitly ban those
+        elif np.size(v) == 1 and not isinstance(v, str):
+            result[k] = float(v)
+
+    return result
 
 
 class Benchmark:
@@ -106,7 +136,10 @@ class Benchmark:
             )
 
             for m, v in metrics["metrics"].items():
-                agg_metrics[m] += v
+                try:
+                    agg_metrics[m] += v
+                except:
+                    pass
             count_episodes += 1
 
         avg_metrics = {k: v / count_episodes for k, v in agg_metrics.items()}
@@ -116,7 +149,7 @@ class Benchmark:
         return avg_metrics
 
     def local_evaluate(
-        self, agent: "Agent", num_episodes: Optional[int] = None
+        self, agent: "Agent", num_episodes: Optional[int] = 20
     ) -> Dict[str, float]:
         if num_episodes is None:
             num_episodes = len(self._env.episodes)
@@ -133,7 +166,7 @@ class Benchmark:
         agg_metrics: Dict = defaultdict(float)
 
         count_episodes = 0
-
+        num_episodes = 20
         pbar = tqdm(total=num_episodes)
         while count_episodes < num_episodes:
             observations = self._env.reset()
@@ -144,6 +177,7 @@ class Benchmark:
                 observations = self._env.step(action)
 
             metrics = self._env.get_metrics()
+            metrics = _extract_scalars_from_info(metrics)
             for m, v in metrics.items():
                 if isinstance(v, dict):
                     for sub_m, sub_v in v.items():

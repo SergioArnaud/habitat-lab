@@ -289,6 +289,11 @@ class TargetStartSensorConfig(LabSensorConfig):
     goal_format: str = "CARTESIAN"
     dimensionality: int = 3
 
+@dataclass
+class FrozenTargetStartSensorConfig(LabSensorConfig):
+    type: str = "FrozenTargetStartSensor"
+    goal_format: str = "CARTESIAN"
+    dimensionality: int = 3
 
 @dataclass
 class TargetCurrentSensorConfig(LabSensorConfig):
@@ -441,6 +446,13 @@ class RobotCollisionsMeasurementConfig(MeasurementConfig):
 class ObjectToGoalDistanceMeasurementConfig(MeasurementConfig):
     type: str = "ObjectToGoalDistance"
 
+@dataclass
+class BaseToGoalDistanceMeasurementConfig(MeasurementConfig):
+    type: str = "BaseToGoalDistance"
+
+@dataclass
+class BaseToObjectlDistanceMeasurementConfig(MeasurementConfig):
+    type: str = "BaseToObjectDistance"
 
 @dataclass
 class EndEffectorToObjectDistanceMeasurementConfig(MeasurementConfig):
@@ -579,6 +591,20 @@ class DidPickObjectMeasurementConfig(MeasurementConfig):
 @dataclass
 class DidViolateHoldConstraintMeasurementConfig(MeasurementConfig):
     type: str = "DidViolateHoldConstraintMeasure"
+
+@dataclass
+class MoveObjectsRewardEnhancedMeasurementConfig(MeasurementConfig):
+    type: str = "MoveObjectsRewardEnhanced"
+    pick_reward: float = 10.0
+    constraint_violate_pen: float = .25
+    drop_pen: float = 5.0
+    single_rearrange_reward: float = 10.0
+    grasping_radious: float = 1.25
+    success_dist: float = 0.15
+    dist_reward: float = 2.5
+    force_pen: float = 0.0001
+    max_force_pen: float = 1.0
+    force_end_pen: float = 2.5
 
 
 @dataclass
@@ -1336,6 +1362,12 @@ cs.store(
     node=TargetStartSensorConfig,
 )
 cs.store(
+    package="habitat.task.lab_sensors.frozen_target_start_sensor",
+    group="habitat/task/lab_sensors",
+    name="frozen_target_start_sensor",
+    node=FrozenTargetStartSensorConfig,
+)
+cs.store(
     package="habitat.task.lab_sensors.goal_sensor",
     group="habitat/task/lab_sensors",
     name="goal_sensor",
@@ -1555,6 +1587,18 @@ cs.store(
     node=ObjectToGoalDistanceMeasurementConfig,
 )
 cs.store(
+    package="habitat.task.measurements.base_to_goal_distance",
+    group="habitat/task/measurements",
+    name="base_to_goal_distance",
+    node=BaseToGoalDistanceMeasurementConfig,
+)
+cs.store(
+    package="habitat.task.measurements.base_to_object_distance",
+    group="habitat/task/measurements",
+    name="base_to_object_distance",
+    node=BaseToObjectlDistanceMeasurementConfig,
+)
+cs.store(
     package="habitat.task.measurements.obj_at_goal",
     group="habitat/task/measurements",
     name="obj_at_goal",
@@ -1577,6 +1621,12 @@ cs.store(
     group="habitat/task/measurements",
     name="move_objects_reward",
     node=MoveObjectsRewardMeasurementConfig,
+)
+cs.store(
+    package="habitat.task.measurements.move_obj_reward_enhanced",
+    group="habitat/task/measurements",
+    name="move_obj_reward_enhanced",
+    node=MoveObjectsRewardEnhancedMeasurementConfig,
 )
 cs.store(
     package="habitat.task.measurements.does_want_terminate",

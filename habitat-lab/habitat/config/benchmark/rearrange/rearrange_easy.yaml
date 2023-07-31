@@ -20,7 +20,7 @@ habitat:
       - joint
       - is_holding
   environment:
-    max_episode_steps: 1500
+    max_episode_steps: 1200
   simulator:
     type: RearrangeSim-v0
     additional_object_paths:

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import numpy as np
 import torch
 import tqdm
+import gym
 from gym import spaces
 from omegaconf import OmegaConf
 from torch import nn
@@ -57,6 +58,9 @@ from habitat_baselines.rl.ddppo.policy import (  # noqa: F401.
 )
 from habitat_baselines.rl.hrl.hierarchical_policy import (  # noqa: F401.
     HierarchicalPolicy,
+)
+from habitat_baselines.rl.thrl.trained_hierarchical_policy import (  # noqa: F401.
+    TrainedHierarchicalPolicy,
 )
 from habitat_baselines.rl.ppo import PPO
 from habitat_baselines.rl.ppo.policy import NetPolicy
@@ -143,7 +147,10 @@ class PPOTrainer(BaseRLTrainer):
         policy = baseline_registry.get_policy(
             self.config.habitat_baselines.rl.policy.name
         )
+
         observation_space = self.obs_space
+        observation_space = dict([(k,v) for k,v in observation_space.items() if k != 'robot_third_rgb'])
+        observation_space = gym.spaces.Dict(observation_space)
         self.obs_transforms = get_active_obs_transforms(self.config)
         observation_space = apply_obs_transforms_obs_space(
             observation_space, self.obs_transforms
@@ -285,6 +292,7 @@ class PPOTrainer(BaseRLTrainer):
         action_space = self.envs.action_spaces[0]
         self.policy_action_space = action_space
         self.orig_policy_action_space = self.envs.orig_action_spaces[0]
+
         if is_continuous_action_space(action_space):
             # Assume ALL actions are NOT discrete
             action_shape = (get_num_actions(action_space),)
@@ -313,7 +321,9 @@ class PPOTrainer(BaseRLTrainer):
             self.agent.load_state_dict(resume_state["state_dict"])
             self.agent.optimizer.load_state_dict(resume_state["optim_state"])
         if self._is_distributed:
-            self.agent.init_distributed(find_unused_params=False)  # type: ignore
+            self.agent.init_distributed(
+                find_unused_params=False
+            )  # type: ignore
 
         logger.info(
             "agent number of parameters: {}".format(
@@ -353,7 +363,9 @@ class PPOTrainer(BaseRLTrainer):
 
         observations = self.envs.reset()
         batch = batch_obs(observations, device=self.device)
-        batch = apply_obs_transforms_batch(batch, self.obs_transforms)  # type: ignore
+        batch = apply_obs_transforms_batch(
+            batch, self.obs_transforms
+        )  # type: ignore
 
         if self._static_encoder:
             with inference_mode():
@@ -421,6 +433,45 @@ class PPOTrainer(BaseRLTrainer):
             dict containing checkpoint info
         """
         return torch.load(checkpoint_path, *args, **kwargs)
+
+    @classmethod
+    def _extract_scalars_from_info(
+        cls, info: Dict[str, Any]
+    ) -> Dict[str, float]:
+        result = {}
+        for k, v in info.items():
+            if not isinstance(k, str) or k in NON_SCALAR_METRICS:
+                continue
+
+            if isinstance(v, dict):
+                result.update(
+                    {
+                        k + "." + subk: subv
+                        for subk, subv in cls._extract_scalars_from_info(
+                            v
+                        ).items()
+                        if isinstance(subk, str)
+                        and k + "." + subk not in NON_SCALAR_METRICS
+                    }
+                )
+            # Things that are scalar-like will have an np.size of 1.
+            # Strings also have an np.size of 1, so explicitly ban those
+            elif np.size(v) == 1 and not isinstance(v, str):
+                result[k] = float(v)
+
+        return result
+
+    @classmethod
+    def _extract_scalars_from_infos(
+        cls, infos: List[Dict[str, Any]]
+    ) -> Dict[str, List[float]]:
+
+        results = defaultdict(list)
+        for i in range(len(infos)):
+            for k, v in cls._extract_scalars_from_info(infos[i]).items():
+                results[k].append(v)
+
+        return results
 
     def _compute_actions_and_step_envs(self, buffer_index: int = 0):
         num_envs = self.envs.num_envs
@@ -502,7 +553,9 @@ class PPOTrainer(BaseRLTrainer):
 
         t_update_stats = time.time()
         batch = batch_obs(observations, device=self.device)
-        batch = apply_obs_transforms_batch(batch, self.obs_transforms)  # type: ignore
+        batch = apply_obs_transforms_batch(
+            batch, self.obs_transforms
+        )  # type: ignore
 
         rewards = torch.tensor(
             rewards_l,
@@ -520,9 +573,15 @@ class PPOTrainer(BaseRLTrainer):
 
         self.current_episode_reward[env_slice] += rewards
         current_ep_reward = self.current_episode_reward[env_slice]
-        self.running_episode_stats["reward"][env_slice] += current_ep_reward.where(done_masks, current_ep_reward.new_zeros(()))  # type: ignore
-        self.running_episode_stats["count"][env_slice] += done_masks.float()  # type: ignore
-        for k, v_k in extract_scalars_from_infos(infos).items():
+        self.running_episode_stats["reward"][
+            env_slice
+        ] += current_ep_reward.where(
+            done_masks, current_ep_reward.new_zeros(())
+        )  # type: ignore
+        self.running_episode_stats["count"][
+            env_slice
+        ] += done_masks.float()  # type: ignore
+        for k, v_k in self._extract_scalars_from_infos(infos).items():
             v = torch.tensor(
                 v_k,
                 dtype=torch.float,
@@ -532,7 +591,9 @@ class PPOTrainer(BaseRLTrainer):
                 self.running_episode_stats[k] = torch.zeros_like(
                     self.running_episode_stats["count"]
                 )
-            self.running_episode_stats[k][env_slice] += v.where(done_masks, v.new_zeros(()))  # type: ignore
+            self.running_episode_stats[k][env_slice] += v.where(
+                done_masks, v.new_zeros(())
+            )  # type: ignore
 
         self.current_episode_reward[env_slice].masked_fill_(done_masks, 0.0)
 
@@ -638,9 +699,7 @@ class PPOTrainer(BaseRLTrainer):
         deltas["count"] = max(deltas["count"], 1.0)
 
         writer.add_scalar(
-            "reward",
-            deltas["reward"] / deltas["count"],
-            self.num_steps_done,
+            "reward", deltas["reward"] / deltas["count"], self.num_steps_done
         )
 
         # Check to see if there are any metrics
@@ -665,10 +724,7 @@ class PPOTrainer(BaseRLTrainer):
             == 0
         ):
             logger.info(
-                "update: {}\tfps: {:.3f}\t".format(
-                    self.num_updates_done,
-                    fps,
-                )
+                "update: {}\tfps: {:.3f}\t".format(self.num_updates_done, fps)
             )
 
             logger.info(
@@ -766,8 +822,9 @@ class PPOTrainer(BaseRLTrainer):
             while not self.is_done():
                 profiling_wrapper.on_start_step()
                 profiling_wrapper.range_push("train update")
-
-                if ppo_cfg.use_linear_clip_decay:
+                if (
+                    ppo_cfg.use_linear_clip_decay
+                ):
                     self.agent.clip_param = ppo_cfg.clip_param * (
                         1 - self.percent_done()
                     )
@@ -849,11 +906,8 @@ class PPOTrainer(BaseRLTrainer):
                 if ppo_cfg.use_linear_lr_decay:
                     lr_scheduler.step()  # type: ignore
 
-                self.num_updates_done += 1
-                losses = self._coalesce_post_step(
-                    losses,
-                    count_steps_delta,
-                )
+                losses = self._coalesce_post_step(losses, count_steps_delta)
+            
 
                 self._training_log(writer, losses, prev_time)
 

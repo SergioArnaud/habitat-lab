@@ -6,6 +6,7 @@
 import argparse
 import random
 from typing import TYPE_CHECKING, Optional
+import cProfile
 
 import numpy as np
 import torch
@@ -16,6 +17,10 @@ from habitat_baselines.config.default import get_config
 if TYPE_CHECKING:
     from omegaconf import DictConfig
 
+import os
+os.environ["GLOG_minloglevel"] = "3"
+os.environ["MAGNUM_LOG"] = "quiet"
+os.environ["HABITAT_SIM_LOG"] = "quiet"
 
 def build_parser(
     parser: Optional[argparse.ArgumentParser] = None,
@@ -77,20 +82,24 @@ def execute_exp(config: "DictConfig", run_type: str) -> None:
     ), f"{config.habitat_baselines.trainer_name} is not supported"
     trainer = trainer_init(config)
 
+    pr = cProfile.Profile()
+    pr.enable()
+
     if run_type == "train":
         trainer.train()
     elif run_type == "eval":
         trainer.eval()
 
+    pr.disable()
+    pr.dump_stats(f'/private/home/sergioarnaud/habitat/habitat-lab/pstats/output_{config.habitat_baselines.wb.run_name}.pstats')
+
 
 def run_exp(exp_config: str, run_type: str, opts=None) -> None:
     r"""Runs experiment given mode and config
-
     Args:
         exp_config: path to config file.
         run_type: "train" or "eval".
         opts: list of strings of additional config options.
-
     Returns:
         None.
     """
